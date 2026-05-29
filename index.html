@@ -372,8 +372,11 @@
         <input type="number" id="newTable" placeholder="1" min="1">
       </div>
       <div class="field">
-        <label>Seat #</label>
-        <input type="number" id="newSeat" placeholder="1" min="1">
+        <label>Table Shape</label>
+        <select id="newShape">
+          <option value="round">⬤ Round</option>
+          <option value="long">▬ Long</option>
+        </select>
       </div>
       <button class="btn btn-primary btn-sm" onclick="addGuest()">+ Add</button>
     </div>
@@ -383,7 +386,7 @@
     <div style="overflow-x:auto;">
       <table class="guest-table">
         <thead>
-          <tr><th>Name</th><th>Group / Family</th><th>Table</th><th>Seat</th><th>Status</th><th>Actions</th></tr>
+          <tr><th>Name</th><th>Group / Family</th><th>Table</th><th>Shape</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody id="guestTableBody"></tbody>
       </table>
@@ -420,7 +423,7 @@ async function init() {
 }
 
 async function loadGuests() {
-  const { data, error } = await sb.from('guests').select('*').order('table_number').order('seat_number');
+  const { data, error } = await sb.from('guests').select('*').order('table_number');
   if (error) { console.error('Load error:', error); return; }
   guests = data.map(normalise);
 }
@@ -432,7 +435,7 @@ function normalise(row) {
     name: row.name,
     group: row.group_name || '',
     table: row.table_number,
-    seat: row.seat_number,
+    shape: row.table_shape || 'round',
     checkedIn: row.checked_in,
   };
 }
@@ -549,7 +552,7 @@ function renderGroupMembers() {
            onclick="${alreadyIn ? '' : `toggleMember('${id}')`}">
         <div class="member-info">
           <div class="member-name">${g.name}</div>
-          <div class="member-detail">Table ${g.table} · Seat ${g.seat}${alreadyIn ? ' · Already checked in' : ''}</div>
+          <div class="member-detail">Table ${g.table} · ${g.shape === 'long' ? '▬ Long table' : '⬤ Round table'}${alreadyIn ? ' · Already checked in' : ''}</div>
         </div>
         <div class="member-check">${sel || alreadyIn ? '✓' : ''}</div>
       </div>`;
@@ -606,15 +609,18 @@ function showConfirm(checkedGuests) {
   const byTable = {};
   checkedGuests.forEach(g => { if (!byTable[g.table]) byTable[g.table] = []; byTable[g.table].push(g); });
 
-  document.getElementById('confirmedList').innerHTML = Object.entries(byTable).map(([table, members]) => `
+  document.getElementById('confirmedList').innerHTML = Object.entries(byTable).map(([table, members]) => {
+    const shape = members[0].shape;
+    const shapeLabel = shape === 'long' ? '▬ Long table' : '⬤ Round table';
+    return `
     <div style="margin-bottom:1rem;">
-      <div style="font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--mid);margin-bottom:0.4rem;">Table ${table}</div>
+      <div style="font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--mid);margin-bottom:0.4rem;">Table ${table} · ${shapeLabel}</div>
       ${members.map(g => `
         <div class="confirmed-row">
           <span class="confirmed-name">${g.name}</span>
-          <span class="confirmed-seat">Seat ${g.seat}</span>
         </div>`).join('')}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   showScreen('confirm');
 }
@@ -637,10 +643,10 @@ async function addGuest() {
   const name  = document.getElementById('newName').value.trim();
   const group = document.getElementById('newGroup').value.trim();
   const table = parseInt(document.getElementById('newTable').value);
-  const seat  = parseInt(document.getElementById('newSeat').value);
+  const shape = document.getElementById('newShape').value;
   const msg   = document.getElementById('addMsg');
 
-  if (!name || !table || !seat) { msg.innerHTML = '<div class="msg error">Name, table and seat are required.</div>'; return; }
+  if (!name || !table) { msg.innerHTML = '<div class="msg error">Name and table number are required.</div>'; return; }
   if (guests.find(g => g.name.toLowerCase() === name.toLowerCase())) { msg.innerHTML = '<div class="msg error">A guest with this name already exists.</div>'; return; }
 
   setLoading(true);
@@ -648,7 +654,7 @@ async function addGuest() {
     name,
     group_name: group,
     table_number: table,
-    seat_number: seat,
+    table_shape: shape,
     checked_in: false,
   });
   setLoading(false);
@@ -657,7 +663,6 @@ async function addGuest() {
 
   document.getElementById('newName').value = '';
   document.getElementById('newTable').value = '';
-  document.getElementById('newSeat').value = '';
   msg.innerHTML = '<div class="msg success">Guest added.</div>';
   setTimeout(() => msg.innerHTML = '', 2500);
   await loadGuests();
@@ -714,13 +719,14 @@ function renderAdminTable() {
     if (a.group && b.group && a.group !== b.group) return a.group.localeCompare(b.group);
     if (a.group && !b.group) return -1;
     if (!a.group && b.group) return 1;
-    return a.table - b.table || a.seat - b.seat;
+    return a.table - b.table;
   });
   tbody.innerHTML = sorted.map(g => `
     <tr class="${g.checkedIn ? 'checked' : ''}">
       <td>${g.name}</td>
       <td>${g.group ? `<span class="group-tag">${g.group}</span>` : '<span style="color:var(--soft)">—</span>'}</td>
-      <td>${g.table}</td><td>${g.seat}</td>
+      <td>${g.table}</td>
+      <td><span style="font-size:0.8rem;">${g.shape === 'long' ? '▬ Long' : '⬤ Round'}</span></td>
       <td><span class="status-dot ${g.checkedIn ? 'in' : 'out'}"></span>${g.checkedIn ? 'Checked in' : 'Awaiting'}</td>
       <td style="display:flex;gap:0.6rem;flex-wrap:wrap;">
         <button class="link-btn" onclick="toggleCheckin('${g.id}')">${g.checkedIn ? 'Undo' : 'Check in'}</button>
